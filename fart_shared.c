@@ -48,10 +48,10 @@ int analyze_case( const char* in, int inl )
 	/* we can get rid of the 'unknown' cases					*/
 
 	if (UC==0)
-		return ANALYZECASE_UPPER;		/* all lowercase		*/
+		return ANALYZECASE_LOWER;		/* all lowercase		*/
 
 	if (LC==0)
-		return ANALYZECASE_LOWER;		/* all uppercase		*/
+		return ANALYZECASE_UPPER;		/* all uppercase		*/
 
 	return ANALYZECASE_MIXED;
 }
