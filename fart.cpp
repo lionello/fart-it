@@ -1,94 +1,93 @@
-//  Copyright (C) 1998-2002 Lionello Lunesu.  All rights reserved.
+// 1998-2002 Lionello Lunesu.
 //  
-//  FART is distributed with NO WARRANTY OF ANY KIND.  No author or
-//  distributor accepts any responsibility for the consequences of using it,
-//  or for whether it serves any particular purpose or works at all, unless
-//  he or she says so in writing.  Refer to the GNU General Public
-//  License (the "License") for full details.
+// This program is free software; you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation; either version 2 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Library General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 //  FART <wc>					Show files that comply with <wc> + final count (find)
 
-//  FART <wc> <s>				Find files <wc>, echo lines containing <s> [+ count] (grep)
-//  FART -! <wc> <s>			Find files <wc>, echo lines NOT containing <s> [+ count]
 //  FART - <s>					Echo lines from stdin containing <s> + final count
-//  FART -! - <s>				Echo lines from stdin NOT containing <s> + final count
+//  FART -v - <s>				Echo lines from stdin NOT containing <s> + final count
+//  FART <wc> <s>				Find files <wc>, echo lines containing <s> [+ count] (grep)
+//  FART -v <wc> <s>			Find files <wc>, echo lines NOT containing <s> [+ count]
 
+//  FART - <s> <r>				Echo lines from stdin containing <s>, but show <r> + final count
+//  FART -v - <s> <r>			Echo lines from stdin containing <s>, but show <r> + final count
 //  FART <wc> <s> <r>			Find files <wc> with <s>, replace with <r>, show filenames + count
+//  FART -v <wc> <s> <r>		?
 //  FART -p <wc> <s> <r>		Find files <wc> with <s>, show filenames, print lines with <r> + count
 //  FART <wc> <s> "r"			Find files <wc>, remove lines with <s>, show filenames + count
-//  FART - <s> <r>				Echo lines from stdin containing <s>, but show <r> + final count
+//  FART -v <wc> <s> "r"		Find files <wc>, remove lines NOT with <s>, show filenames + count
 
 // TODO:
-// * don't touch files if nothing changed
+// * don't touch files if nothing changed							done
+// * prevent processing a file twice when fart'ing filenames		done
+// * remove all references to _MAX_PATH								done
 // * don't use temp file, unless needed
-// * prevent processing a file twice when fart'ing filenames
+// * invert-mode for FART
 // * rename folders
+// * allow use of wildmat() on WIN32 too (but case-insensitive)
+// * UNICODE version
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
 
-#ifdef _WIN32
-#include <fcntl.h>
-#include <conio.h>
-#include <io.h>
-#include <direct.h>
-#include <process.h>
-#endif
-#ifdef __unix__
-#include "fart_linux.h"
-#endif
+#include "fart_shared.h"
 
 ///////////////////////////////////////////////////////////////////////////////
 
-#define VERSION				"v1.96"
-#define TEMPFILE			"_fart.~"
+#define VERSION				"v1.97"
 
-#define WILDCARD_SEPARATOR	','
+#define _WILDCARD_SEPARATOR	','
 #define WILDCARD_ALL		"*"
 
 #ifdef _WIN32
 
-# define DIR_SEPARATOR		'\\'
-# define DRIVE_SEPARATOR	':'
-# define DIR_CURRENT		""
-# define DIR_PARENT			"..\\"
-/*
-typedef _finddata_t DIRENT;
-# define DIRENT_NAME(d)		(d)->name
-# define DIRENT_ISDIR(d)	((d)->attrib & _A_SUBDIR)
+#include <io.h>							// for _setmode
+#include <fcntl.h>						// for _O_BINARY
+#include <process.h>					// for _spawn
+//#include <conio.h>
 
-typedef long DIR;
-# define OPENDIR(d,data)	_findfirst(d,data)
-# define READDIR(d)			_findnext(d);
-# define CLOSEDIR(d)		_findclose(d);
-*/
+# define _DRIVE_SEPARATOR	':'
+# define _DIR_SEPARATOR		'\\'
+# define DIR_CURRENT		""
+# define DIR_SEPARATOR		"\\"
+# define DIR_PARENT			"..\\"
+
 #else // _WIN32
 
-extern "C" int wildmat (const char *text, const char *p);
-# define DIR_SEPARATOR		'/'
-# define DIR_CURRENT		""
-# define DIR_PARENT			"../"
-/*
-typedef dirent DIRENT;
-# define DIRENT_NAME(d)		(d)->d_name
-# define DIRENT_ISDIR(d)	((d)->d_type==DT_DIR)
+#include <unistd.h>						// for fork,execlp
+#include <sys/wait.h>					// for wait
 
-# define OPENDIR(a,b,c)		opendir(),
-*/
+# define _DIR_SEPARATOR		'/'
+# define DIR_CURRENT		"./"
+# define DIR_SEPARATOR		"/"
+# define DIR_PARENT			"../"
 
 #endif // !_WIN32
 
-static const char __dir_separator[] = {DIR_SEPARATOR,'\0'};
-
 // Output strings (eventually customizable)
+static char __temp_file[16] = "_fart.~";
+static char __backup_suffix[16] = ".bak";			// fart.cpp.bak
 static char __linenumber[16] = "[%4i]";				// [   2]
 static char __filename[16] = "%s\n";				// fart.cpp
 static char __filename_count[16] = "%s [%i]\n";		// fart.cpp [2]
 static char __filename_text[16] = "%s :\n";			// fart.cpp :
 static char __filename_rename[16] = "%s => %s\n";	// fart.CPP => fart.cpp
 
+// Option flags
 bool	_Numbers = false;
 bool	_Backup = false;
 bool	_Preview = false;
@@ -106,7 +105,7 @@ bool	_Names = false;
 bool	_Binary = false;
 bool	_CStyle = false;
 
-struct 
+struct argument_t
 {
 	bool*	state;
 	char	option;
@@ -130,7 +129,7 @@ struct
 	{ &_Names, 'f', "filename", "Find (and replace) filename instead of contents" },
 	{ &_Binary, 'B', "binary", "Also search (and replace) in binary files (CAUTION)" },
 	{ &_CStyle, 'C', "c-style", "Allow C-style extended characters (\\xFF\\0\\t\\n\\r\\\\ etc.)" },
-	{ &_CVS, ' ', "cvs", "Skip cvs dirs; execute \"cvs edit\" before changing r/o files" },
+	{ &_CVS, ' ', "cvs", "Skip cvs dirs; execute \"cvs edit\" before changing files" },
 	// fart specific options
 //	{ &_VSS, ' ', 'vss", "Do SourceSafe check-out before changing r/o files" },
 	{ &_AdaptCase, 'a', "adapt", "Adapt the case of replace_string to found string" },
@@ -159,9 +158,7 @@ char	fart_buf[MAXSTRING];
 
 // Macro's for output to stderr, first flush stdout and later stderr
 #define ERRPRINTF( s ) fflush(stdout),fprintf( stderr, s ),fflush(stderr)
-
 #define ERRPRINTF1( s, a ) fflush(stdout),fprintf( stderr, s, a ),fflush(stderr)
-
 #define ERRPRINTF2( s, a, b ) fflush(stdout),fprintf( stderr, s, a, b ),fflush(stderr)
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -246,43 +243,6 @@ int cstyle( char *buffer )
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// Efficient strdup that concatenates 2 strings.
-
-char* strdup2( const char* s1, const char* s2 )
-{
-	int l1 = strlen(s1);
-	int l2 = strlen(s2) + 1;
-	char *str = (char*)malloc(l1+l2);
-	memcpy( str, s1, l1 );
-	memcpy( str+l1, s2, l2 );
-	return str;
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// Find memory block inside memory block
-
-char* memmem( char* m1, size_t len1, const char *m2, size_t len2 )
-{
-	if (len1<len2)
-		return NULL;
-	// Check for valid arguments (same behaviour as strstr)
-	if (!m2 || !len2)
-		return m1;
-	// Do a regular compare, if the buffers are of the same size
-//	if (len1==len2)
-//		return memcmp(m1,m2,len1)?NULL:m1;
-
-	// TODO: could be improved somewhat (a.o. inlining memcmp)
-	for (size_t t=0;t<=len1-len2;t++)
-		if (m1[t]==m2[0])
-		{
-			if (memcmp( &m1[t], m2, len2 )==0)
-				return &m1[t];
-		}
-	return NULL;
-}
-
-///////////////////////////////////////////////////////////////////////////////
 // Prepares a line for text comparison
 
 const char* get_compare_buf( const char *in )
@@ -301,31 +261,14 @@ static char compare_buf[MAXSTRING];
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-
-char* memlwr( char *ptr, size_t size )
-{
-	char *cur = ptr;
-	while (size)
-	{
-		strlwr(cur);
-		char *z = (char*)memchr(cur,'\0',size);
-		if (!z)
-			break;
-		size -= z+1-cur;
-		cur = z+1;
-	}
-	return ptr;
-}
-
-///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
-void DumpHelp()
+void usage()
 {
 	// Print banner
 	printf( "\nFind And Replace Text  %-30s by Lionello Lunesu\n\n",VERSION);
 
-	printf("Usage: FART [options] [--] <wildcard>[%c...] [find_string] [replace_string]\n", WILDCARD_SEPARATOR );
+	printf("Usage: FART [options] [--] <wildcard>[%c...] [find_string] [replace_string]\n", _WILDCARD_SEPARATOR );
 	printf("\nOptions:\n");
 	for (int t=0;arguments[t].state;t++)
 		printf(" %c%c --%-14s%s\n", 
@@ -334,41 +277,11 @@ void DumpHelp()
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
-// Analyzes the case of the 'in' string
-//  -1=all lower case, 0=mixed, 1=all upper case
+// Returns 'true' if 'wc' is a file wildcard (containing * or ?)
 
-int analyze_case( const char* in, int inl )
+bool is_wildcard( const char* wc )
 {
-	int UC=0, LC=0;
-
-	for (int t=0;t<inl;t++)
-	{
-		char uc = toupper(in[t]);
-		char lc = tolower(in[t]);
-
-		if (uc==lc)			// char is not alphabetic
-			continue;
-
-		if (uc==in[t])		// char is uppercase
-			UC++;
-		else				// char is lowercase
-			LC++;
-	}
-
-	if (UC==0 && LC==0)						// no alphabetic chars
-		return 0;
-
-	// If all the chars are either upper- or lowercase
-	// we can get rid of the 'unknown' cases
-
-	if (UC==0)
-		return -1;							// all lowercase
-
-	if (LC==0)
-		return 1;							// all uppercase
-
-	return 0;
+	return strchr(wc,'*') || strchr(wc,'?');
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -519,10 +432,10 @@ const char* pre_fart( const char* test )
 	if (_AdaptCase)
 	{
 		int i = analyze_case(test,FindLength);
-		if (i>0)
+		if (i==ANALYZECASE_UPPER)
 			replacement = ReplaceStringUpr;
 		else
-		if (i<0)
+		if (i==ANALYZECASE_LOWER)
 			replacement = ReplaceStringLwr;
 	}
 
@@ -583,26 +496,6 @@ const char* fart_line( const char *_line, char *farted )
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
-// Returns 'true' if 'dir' is a directory used by CVS
-
-bool is_cvs_path( const char* dir )
-{
-#ifdef _WIN32
-	return strcmp(dir,"CVS")==0;			// stricmp?
-#else
-	return strcmp(dir,"cvs")==0;
-#endif
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// Returns 'true' if 'wc' is a file wildcard (containing * or ?)
-
-bool is_wildcard( const char* wc )
-{
-	return strchr(wc,'*') || strchr(wc,'?');
-}
-
-///////////////////////////////////////////////////////////////////////////////
 // Returns 'true' if the file seems binary, 'false' otherwise (text)
 
 bool is_binary( FILE *f )
@@ -645,7 +538,7 @@ bool findtext_file( const char* in )
 	FILE *f = fopen(in,"rb");
 	if (!f)
 	{
-		ERRPRINTF1( "Error: unable to open file %s\n", in );
+		ERRPRINTF1( "Error: unable to open file: %s\n", in );
 		return false;
 	}
 
@@ -717,7 +610,8 @@ int _fart( FILE *f1, FILE *f2, const char* in )
 			if (!t)
 			{
 				// find_string not found
-				fputs( fart_buf+(bp-b), f2 );
+				if (f2)
+					fputs( fart_buf+(bp-b), f2 );
 				break;
 			}
 			else
@@ -730,7 +624,8 @@ int _fart( FILE *f1, FILE *f2, const char* in )
 			const char *replacement = pre_fart( fart_buf+(t-b) );
 			if (!replacement)
 			{
-				fputs( fart_buf+(bp-b), f2 );
+				if (f2)
+					fputs( fart_buf+(bp-b), f2 );
 				break;
 			}
 
@@ -774,12 +669,14 @@ int _fart( FILE *f1, FILE *f2, const char* in )
 				first_line = false;
 			}
 
-			// Put a '\0' just before the find_string
-//			*(fart_buf+(t-b)) = '\0';
+			// TODO: no temp file yet? create one and copy data up to here
+//			if (!f2)
+
 			// Write the text before the find_string
 			fwrite( fart_buf+(bp-b), 1, t-bp, f2 );
 			// Write the replace_string instead of the find_string
 			fwrite( replacement, 1, ReplaceLength, f2 );
+
 			// Put the buffer-pointer right after the find_string
 			bp = t + FindLength;
 
@@ -800,7 +697,7 @@ bool fart( const char* in )
 	FILE *f1 = fopen(in,"rb");
 	if (!f1)
 	{
-		ERRPRINTF1( "Error: unable to open file %s\n", in );
+		ERRPRINTF1( "Error: unable to open file: %s\n", in );
 		return false;
 	}
 
@@ -814,7 +711,7 @@ bool fart( const char* in )
 	}
 
 	// Open temporary file for writing
-	FILE *f2 = fopen(TEMPFILE,"wb");
+	FILE *f2 = fopen(__temp_file,"wb");
 	if (!f2)
 	{
 		ERRPRINTF( "Error: unable to create temporary file\n" );
@@ -822,7 +719,7 @@ bool fart( const char* in )
 		return false;
 	}
 
-	int this_find_count = _fart(f1,f2,in);
+	int this_find_count = _fart(f1,stdout,in);
 
 	// Close file handles
 	fclose(f2);
@@ -838,38 +735,48 @@ bool fart( const char* in )
 	{
 		if (_CVS)
 		{
-			// TODO: check for read-only first
 			if (_Verbose)
 				ERRPRINTF1( "FART: cvs edit %s\n", in );
-//			_spawnlp( _P_WAIT, "cvs", "cvs", "edit", in, NULL );
+#ifdef _WIN32
+			// win32: check for read-only first?
+			_spawnlp( _P_WAIT, "cvs", "cvs", "edit", in, NULL );
+#else
+			if (fork()==0)
+			{
+				// child process; execute "cvs edit" (will not return)
+				execlp( "cvs", "cvs", "edit", in, NULL );
+			}
+			wait(NULL);
+#endif
+			// TODO: check return code; stop on failure
 		}
 
 		if (_Backup)
 		{
 			// Append ".bak" to filename
-			char *backup = strdup2(in,".bak");
+			char *backup = strdup2(in,__backup_suffix);
 			// Remove old backup. Rename original file to backup-filename
 			if (remove( backup )!=0)
-				ERRPRINTF1( "Error: could not remove %s\n", backup );
+				ERRPRINTF1( "Error: could not remove: %s\n", backup );
 			else
 			if (rename( in, backup )!=0)
-				ERRPRINTF1( "Error: could not backup %s\n", in );
+				ERRPRINTF1( "Error: could not backup: %s\n", in );
 			free(backup);
 		}
 		else
 		{
 			// Remove original file
 			if (remove( in )!=0)
-				ERRPRINTF1( "Error: file %s is read only\n", in );
+				ERRPRINTF1( "Error: file is read only: %s\n", in );
 		}
 		// Rename temporary file to original filename
 		//  (will fail if we could not rename/remove the original file)
-		rename( TEMPFILE, in );
+		rename( __temp_file, in );
 	}
 
 	// Remove temporary file
 	// (either nothing has changed, or we failed to rename/remove the original file)
-	remove( TEMPFILE );
+	remove( __temp_file );
 
 	return true;
 }
@@ -881,36 +788,21 @@ bool fart( const char* in )
 
 int for_all_files( const char *dir, const char* wc, file_func_t _ff )
 {
-	_finddata_t fd;
-	long fh;
-	int count = 0;
+	char ** spul = find_files(dir,wc,FINDFILES_FILES);
+	if (!spul)
+		return 0;
 
 	if (_Verbose)
 		ERRPRINTF2( "FART: processing %s,%s\n",dir,wc);
 
-	// Make full path wildcard
-	char *_path = strdup2(dir,wc);
-	fh = _findfirst( _path, &fd );
-//	if (_Verbose && fh==-1)
-//		ERRPRINTF1("FART: failed to open %s\n",_path);
-	free(_path);
-
-	for (int lf=(int)fh;lf!=-1;lf=_findnext(fh,&fd))
+	int count = 0;
+	for (int t=0;spul[t];t++)
 	{
-		// Do files now; process folders later
-		if (fd.attrib & _A_SUBDIR)
-			continue;
-#ifndef _WIN32
-		if (strcmp(fd.name,wc) && !wildmat(fd.name,wc))
-			continue;
-#endif
-
-		// Call callback function
-//		if (_Verbose)
-//			ERRPRINTF2( "FART: found %s,%s\n", dir, fd.name );
-		count += _ff( dir, fd.name );
+		count += _ff( dir, spul[t] );
+		free( spul[t] );
 	}
-	_findclose(fh);
+
+	free(spul);
 	return count;
 }
 
@@ -924,48 +816,31 @@ int for_all_files_recursive( const char *dir, const char* wc, file_func_t _ff )
 	int count = for_all_files(dir,wc,_ff);
 
 	// Now we recurse into folders
+	char ** spul = find_files(dir,WILDCARD_ALL,FINDFILES_DIRS);
+	if (!spul)
+		return 0;
 
-	char _path[_MAX_PATH];				// TODO: save some stack space
-	// Find all dirs (*.*)
-	strcpy( _path, dir );
-	strcat( _path, WILDCARD_ALL );
-
-	_finddata_t fd;
-	long fh = _findfirst( _path, &fd );
-	for (int lf=(int)fh;lf!=-1;lf=_findnext(fh,&fd))
+	for (int t=0;spul[t];free(spul[t]),t++)
 	{
-		if (fd.attrib & _A_SUBDIR)
+		// Skip "."
+		if (!strcmp(spul[t],"."))
+			continue;
+		// Skip ".."
+		if (!strcmp(spul[t],".."))
+			continue;
+		// Don't recurse into cvs directories
+		if (_CVS && strcmp(spul[t],"CVS")==0)
 		{
-			// Skip "."
-			if (!strcmp(fd.name,"."))
-				continue;
-			// Skip ".."
-			if (!strcmp(fd.name,".."))
-				continue;
-#ifndef _WIN32
-			if (strcmp(fd.name,wc) && !wildmat(fd.name,wc))
-				continue;
-#endif
-			// Don't recurse into cvs directories
-			if (_CVS && is_cvs_path(fd.name))
-			{
-				if (_Verbose)
-					ERRPRINTF2( "FART: skipping cvs dir %s%s\n",dir, fd.name );
-				continue;
-			}
-
-			// No chdir; this would mess up the command line
-
-			// Append subdir to current dir
-			strcpy(_path,dir);
-			strcat(_path,fd.name);
-
-			strcat(_path,__dir_separator);
-
-			count += for_all_files_recursive(_path,wc,_ff);
+			if (_Verbose)
+				ERRPRINTF2( "FART: skipping cvs dir %s%s\n",dir, spul[t] );
+			continue;
 		}
+
+		char *_path = strdup3(dir,spul[t],DIR_SEPARATOR);
+		count += for_all_files_recursive(_path,wc,_ff);
+		free(_path);
 	}
-	_findclose(fh);
+	free(spul);
 	return count;
 }
 
@@ -974,8 +849,17 @@ int for_all_files_recursive( const char *dir, const char* wc, file_func_t _ff )
 int print_files( const char* dir, const char* file )
 {
 	char *_path = strdup2(dir,file);
-
-	// FIXME?: does not check whether file actually exists
+/*	if (!_Preview)
+	{
+		FILE *f = fopen(_path,"rb");
+		if (!f)
+		{
+			ERRPRINTF1("Error: could not access file: %s\n", _path);
+			free(_path);
+			return 0;
+		}
+		fclose(f);
+	}*/
 	puts(_path);
 	free(_path);
 	return 1;
@@ -985,8 +869,8 @@ int print_files( const char* dir, const char* file )
 
 int for_all_files_smart( const char* dir, const char* file, file_func_t _ff )
 {
-	if (!is_wildcard(file))
-		return _ff(dir,file);
+//	if (!is_wildcard(file) && !_SubDir)
+//		return _ff(dir,file);
 
 	if (_SubDir)
 		return for_all_files_recursive( dir, file, _ff );
@@ -999,27 +883,27 @@ int for_all_files_smart( const char* dir, const char* file, file_func_t _ff )
 
 int for_all_wildcards( char *wildcard, file_func_t _ff )
 {
-	char file[_MAX_PATH];
 	int count = 0;
 	while (1)
 	{
-		char *wc_sep = strchr(wildcard,WILDCARD_SEPARATOR);
+		char *wc_sep = strchr(wildcard,_WILDCARD_SEPARATOR);
 		if (wc_sep)
 			*wc_sep = '\0';
 
-		char *dir_sep = strrchr(wildcard,DIR_SEPARATOR);
-#ifdef DRIVE_SEPARATOR
+		char *dir_sep = strrchr(wildcard,_DIR_SEPARATOR);
+#ifdef _DRIVE_SEPARATOR
 		if (!dir_sep)
-			dir_sep = strchr(wildcard,DRIVE_SEPARATOR);
+			dir_sep = strchr(wildcard,_DRIVE_SEPARATOR);
 #endif
 		if (dir_sep)
 		{
-			dir_sep++;						// point after "dir/"
-			if (*dir_sep)
+			dir_sep++;					// points to filename after slash
+			if (*dir_sep)				// filename available?
 			{
-				strcpy( file, dir_sep );
-				*dir_sep = '\0';
-				count += for_all_files_smart( wildcard, file, _ff );
+				char *path = strdup(wildcard);
+				path[dir_sep - wildcard] = '\0';
+				count += for_all_files_smart( path, dir_sep, _ff );
+				free(path);
 			}
 			else
 			{
@@ -1040,7 +924,7 @@ int for_all_wildcards( char *wildcard, file_func_t _ff )
 		if (!wc_sep)
 			break;
 
-		*wc_sep = WILDCARD_SEPARATOR;		// restore
+		*wc_sep = _WILDCARD_SEPARATOR;		// restore
 		wildcard = wc_sep + 1;				// next piece
 	}
 	return count;
@@ -1164,18 +1048,17 @@ void parse_options( int argc, char* argv[] )
 
 int findtext_file_path( const char* dir, const char* file )
 {
-	char _path[_MAX_PATH];
-	strcpy(_path,dir);
-	strcat(_path,file);
+	char *_path = strdup2(dir,file);
 
 	if (_Names)
 	{
-		const char *buf = findtext_line(file);
-		if (buf)
+		int count = findtext_line_count(file);
+		if (_Invert) count = !count;
+		if (count)
 		{
 			// file name contains pattern; print filename
+			TotalFindCount+=count;
 			TotalFileCount++;
-			TotalFindCount++;
 			puts(_path);
 		}
 	}
@@ -1185,6 +1068,7 @@ int findtext_file_path( const char* dir, const char* file )
 		findtext_file( _path );
 	}
 
+	free(_path);
 	return 1;
 }
 
@@ -1205,8 +1089,9 @@ int fart_file_path( const char* dir, const char* file )
 			char *newpath = strdup2(dir,buf);
 			if (_Preview || rename( _path, newpath )==0)
 			{
-				// Filename was changed
-				TotalFindCount++;
+				// Filename was changed (only increment count if actually done)
+				if (!_Preview)
+					TotalFindCount++;
 				printf( __filename_rename, _path, buf);
 			}
 			else
@@ -1237,7 +1122,7 @@ int main( int argc, char* argv[] )
 	if (_Help || !HasWildCard)
 	{
 		// S/He obviously needs some help
-		DumpHelp();
+		usage();
 		return -1;
 	}
 
@@ -1334,10 +1219,10 @@ int main( int argc, char* argv[] )
 		{
 			// OPTIMIZE: We only need to adapt the replace_string once
 			int i = analyze_case(FindString,FindLength);
-			if (i==-1)
+			if (i==ANALYZECASE_LOWER)
 				strlwr(ReplaceString);							// FIXME: memlwr
 			else
-			if (i==1)
+			if (i==ANALYZECASE_UPPER)
 				strupr(ReplaceString);							// FIXME: memlwr
 			if (i && _Verbose)
 				ERRPRINTF1( "FART: actual replace_string=\"%s\"\n", ReplaceString );
@@ -1368,7 +1253,7 @@ int main( int argc, char* argv[] )
 	if (_Binary && !_Preview)
 	{
 		// If the size changes, binary files will very likely stop working
-		if (FindLength!=ReplaceLength && !_Backup)
+		if (/*FindLength!=ReplaceLength &&*/ !_Backup)
 		{
 			ERRPRINTF( "Error: too dangerous; must specify --backup" );
 			return -2;
@@ -1376,8 +1261,6 @@ int main( int argc, char* argv[] )
 		// Warn about FART'ing binary files
 		ERRPRINTF( "Warning: fart may corrupt binary files\n" );
 	}
-
-	_Backup = true;				// FIXME for now (unsafe)
 
 	for_all_wildcards( WildCard, &fart_file_path );
 	if (!_Quiet)
