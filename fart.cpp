@@ -33,6 +33,7 @@
 // * don't touch files if nothing changed							done
 // * prevent processing a file twice when fart'ing filenames		done
 // * remove all references to _MAX_PATH								done
+// * CVS-compatible file renaming
 // * don't use temp file, unless needed
 // * invert-mode for FART
 // * rename folders
@@ -48,7 +49,7 @@
 
 ///////////////////////////////////////////////////////////////////////////////
 
-#define VERSION				"v1.98"
+#define VERSION				"v1.98b"
 
 #define _WILDCARD_SEPARATOR	','
 #define WILDCARD_ALL		"*"
@@ -77,6 +78,7 @@
 # define DIR_PARENT			"../"
 
 #endif // !_WIN32
+
 
 // Output strings (eventually customizable)
 static char __temp_file[16] = "_fart.~";
@@ -271,9 +273,13 @@ void usage()
 	printf("Usage: FART [options] [--] <wildcard>[%c...] [find_string] [replace_string]\n", _WILDCARD_SEPARATOR );
 	printf("\nOptions:\n");
 	for (int t=0;arguments[t].state;t++)
-		printf(" %c%c --%-14s%s\n", 
-			arguments[t].option==' '?' ':'-', arguments[t].option, 
-			arguments[t].option_long, arguments[t].description );
+	{
+		if (arguments[t].option>' ')
+			printf(" -%c,", arguments[t].option );
+		else
+			printf("    " );
+		printf(" --%-14s%s\n", arguments[t].option_long, arguments[t].description );
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -796,6 +802,9 @@ int for_all_files( const char *dir, const char* wc, file_func_t _ff )
 	int count = 0;
 	for (int t=0;spul[t];t++)
 	{
+static char prog[] = "|/-||";
+static int progress = 0;
+		fprintf(stderr,"%c\r",prog[progress]); if (!prog[++progress]) progress=0;
 		count += _ff( dir, spul[t] );
 		free( spul[t] );
 	}
@@ -986,6 +995,9 @@ void parse_options( int argc, char* argv[] )
 		if (do_options && argv[t][0]=='/')
 		{
 			options_short(argv[t]+1);
+			// HACK: allow /s for --recursive on DOS
+			if (strchr(argv[t],'s'))
+				_SubDir = true;
 			continue;
 		}
 #endif
