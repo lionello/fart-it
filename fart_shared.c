@@ -1,16 +1,21 @@
 #include "fart_shared.h"
 
-#ifdef WIN32
+#ifdef _WIN32
 
 #include <io.h>
 #include <direct.h>
 
-#else // WIN32
+#else /* _WIN32 */
 
 #include <dirent.h>
 #define USE_WILDMAT
 
-#endif // !WIN32
+#ifndef DT_DIR
+#include <sys/stat.h>
+#endif
+
+#endif /* !_WIN32 */
+
 
 #ifdef USE_WILDMAT
 /*extern "C"*/ int wildmat (const char *text, const char *p);
@@ -76,7 +81,7 @@ char* memmem( char* m1, size_t len1, const char *m2, size_t len2 )
 	size_t c,t;
 	if (len1<len2)
 		return NULL;
-	// Check for valid arguments (same behaviour as strstr)
+	/* Check for valid arguments (same behaviour as strstr) */
 	if (!m2 || !len2)
 		return m1;
 
@@ -117,7 +122,7 @@ char* strdup3( const char* s1, const char* s2, const char* s3 )
 
 /*****************************************************************************/
 
-#ifdef WIN32
+#ifdef _WIN32
 
 char** find_files( const char* dir, const char *wc, int dirs_or_files )
 {
@@ -127,7 +132,7 @@ char** find_files( const char* dir, const char *wc, int dirs_or_files )
 	char **spul;
 	int numitems;
 
-	// Make full path wildcard
+	/* Make full path wildcard */
 #ifdef USE_WILDMAT
 	_path = strdup2(dir,"*");
 #else
@@ -146,7 +151,7 @@ char** find_files( const char* dir, const char *wc, int dirs_or_files )
 		if (!(fd.attrib & _A_SUBDIR)==dirs_or_files)
 			continue;
 #ifdef USE_WILDMAT
-		if (strcmp(fd.name,wc) && !wildmat(fd.name,wc))			// stricmp!?
+		if (strcmp(fd.name,wc) && !wildmat(fd.name,wc))			/* stricmp!? */
 			continue;
 #endif
 		spul = (char**)realloc(spul, ++numitems*sizeof(char*));
@@ -156,14 +161,14 @@ char** find_files( const char* dir, const char *wc, int dirs_or_files )
 
 	_findclose(fh);
 
-	// append NULL
+	/* append NULL */
 	spul = (char**)realloc(spul, ++numitems*sizeof(char*));
 	spul[numitems-1] = NULL;
 
 	return spul;
 }
 
-#else // WIN32
+#else /* _WIN32 */
 
 char** find_files( const char* dir, const char *wc, int dirs_or_files )
 {
@@ -171,8 +176,14 @@ char** find_files( const char* dir, const char *wc, int dirs_or_files )
 	struct dirent* dirent;
 	char **spul;
 	int numitems;
+#ifndef DT_DIR
+	/* dirent without d_type field; we must 'stat' to get the type */
+	struct stat sbuf;
+	char *_fullpath;
+	int i;
+#endif
 
-	// Make full path wildcard
+	/* Make full path wildcard */
 	hd = opendir(dir);
 	if (!hd)
 		return NULL;
@@ -188,9 +199,22 @@ char** find_files( const char* dir, const char *wc, int dirs_or_files )
 
 	do 
 	{
-		// Do files now; process folders later
+		/* Do files now; process folders later */
+#ifdef DT_DIR
 		if (!(dirent->d_type==DT_DIR)==dirs_or_files)
 			continue;
+#else
+		if (dirs_or_files!=FINDFILES_BOTH)
+		{
+			_fullpath = strdup2(dir,dirent->d_name);
+			i = stat(_fullpath, &sbuf);
+			free(_fullpath);
+			/* skip entry if stat failed or if it's not what we want */
+			if (i==-1 || !S_ISDIR(sbuf.st_mode)==dirs_or_files)
+				continue;
+		}
+#endif
+
 #ifdef USE_WILDMAT
 		if (strcmp(dirent->d_name,wc) && !wildmat(dirent->d_name,wc))
 			continue;
@@ -202,7 +226,7 @@ char** find_files( const char* dir, const char *wc, int dirs_or_files )
 
 	closedir(hd);
 
-	// append NULL
+	/* append NULL */
 	spul = (char**)realloc(spul, ++numitems*sizeof(char*));
 	spul[numitems-1] = NULL;
 
@@ -230,7 +254,7 @@ char *strlwr(char *s)
 
 /*****************************************************************************/
 
-#endif // !WIN32
+#endif /* !_WIN32 */
 
 /*****************************************************************************/
 
