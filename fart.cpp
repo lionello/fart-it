@@ -48,7 +48,7 @@
 
 ///////////////////////////////////////////////////////////////////////////////
 
-#define VERSION				"v1.97"
+#define VERSION				"v1.98"
 
 #define _WILDCARD_SEPARATOR	','
 #define WILDCARD_ALL		"*"
@@ -614,11 +614,6 @@ int _fart( FILE *f1, FILE *f2, const char* in )
 					fputs( fart_buf+(bp-b), f2 );
 				break;
 			}
-			else
-			{
-				this_find_count++;
-				TotalFindCount++;
-			}
 
 			// Adapt the replace_string to the actually found string
 			const char *replacement = pre_fart( fart_buf+(t-b) );
@@ -628,6 +623,8 @@ int _fart( FILE *f1, FILE *f2, const char* in )
 					fputs( fart_buf+(bp-b), f2 );
 				break;
 			}
+
+			this_find_count++;
 
 			// First occurence in this file?
 			if (first)
@@ -719,7 +716,7 @@ bool fart( const char* in )
 		return false;
 	}
 
-	int this_find_count = _fart(f1,stdout,in);
+	int this_find_count = _fart(f1,f2,in);
 
 	// Close file handles
 	fclose(f2);
@@ -733,6 +730,7 @@ bool fart( const char* in )
 
 	if (this_find_count && !_Preview)
 	{
+		TotalFindCount += this_find_count;
 		if (_CVS)
 		{
 			if (_Verbose)
