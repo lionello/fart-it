@@ -4,6 +4,7 @@
 
 #include <io.h>
 #include <direct.h>
+#define USE_WILDMAT
 
 #else /* _WIN32 */
 
@@ -18,7 +19,8 @@
 
 
 #ifdef USE_WILDMAT
-/*extern "C"*/ int wildmat (const char *text, const char *p);
+/*extern "C"*/ 
+int wildmat (const char *text, const char *p);
 #endif
 
 /*****************************************************************************/
@@ -131,6 +133,11 @@ char** find_files( const char* dir, const char *wc, int dirs_or_files )
 	struct _finddata_t fd;
 	char **spul;
 	int numitems;
+#ifdef USE_WILDMAT
+	/* When using the wildmat routine, we compare in lowercase */
+	char *wclwr, *namelwr;
+	int matched;
+#endif;
 
 	/* Make full path wildcard */
 #ifdef USE_WILDMAT
@@ -144,6 +151,10 @@ char** find_files( const char* dir, const char *wc, int dirs_or_files )
 	if (fh==-1)
 		return NULL;
 
+#ifdef USE_WILDMAT
+	wclwr = strlwr(strdup(wc));
+#endif
+
 	spul = NULL;
 	numitems = 0;
 	do
@@ -151,7 +162,10 @@ char** find_files( const char* dir, const char *wc, int dirs_or_files )
 		if (!(fd.attrib & _A_SUBDIR)==dirs_or_files)
 			continue;
 #ifdef USE_WILDMAT
-		if (strcmp(fd.name,wc) && !wildmat(fd.name,wc))			/* stricmp!? */
+		namelwr = strlwr(strdup(fd.name));
+		matched = !strcmp(namelwr,wclwr) || wildmat(namelwr,wclwr);
+		free(namelwr);
+		if (!matched)
 			continue;
 #endif
 		spul = (char**)realloc(spul, ++numitems*sizeof(char*));
@@ -164,6 +178,10 @@ char** find_files( const char* dir, const char *wc, int dirs_or_files )
 	/* append NULL */
 	spul = (char**)realloc(spul, ++numitems*sizeof(char*));
 	spul[numitems-1] = NULL;
+
+#ifdef USE_WILDMAT
+	free( wclwr );
+#endif
 
 	return spul;
 }
