@@ -76,22 +76,22 @@ char* memupr( char *ptr, size_t size )
 
 /*****************************************************************************/
 
-char* memmem( char* m1, size_t len1, const char *m2, size_t len2 )
+char* memmem( const char* m1, size_t len1, const char *m2, size_t len2 )
 {
 	size_t c,t;
 	if (len1<len2)
 		return NULL;
 	/* Check for valid arguments (same behaviour as strstr) */
 	if (!m2 || !len2)
-		return m1;
+		return (char*)m1;
 
 	for (t=0;t<=len1-len2;t++)
 	{
 		for (c=0;c<len2;c++)
-			if (m1[c+t]!=m2[c+t])
+			if (m1[c+t]!=m2[c])
 				break;
 		if (c==len2)
-			return &m1[t];
+			return (char*)&m1[t];
 	}
 	return NULL;
 }

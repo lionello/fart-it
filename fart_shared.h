@@ -42,7 +42,7 @@ char* strdup3( const char* s1, const char* s2, const char* s3 );
 /* TODO: create strdup(...) */
 
 /* Find memory block inside memory block */
-char* memmem( char* m1, size_t len1, const char *m2, size_t len2 );
+char* memmem( const char* m1, size_t len1, const char *m2, size_t len2 );
 
 /* Find and replace a char in a memory block */
 char* memchrset( char* m1, size_t len1, int find, int replace );
