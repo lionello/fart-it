@@ -121,6 +121,9 @@ struct argument_t
 //	{ &_Options, ' ', "", "No more options after this" },			// --
 	// find options
 	{ &_SubDir, 'r', "recursive", "Process sub-folders recursively" },
+#ifdef _WIN32
+	{ &_SubDir, 's', "subdir", NULL },
+#endif
 	{ &_Count, 'c', "count", "Only show filenames, match counts and totals" },
 	// grep options
 //	{ &_Regex, 'g', "regex", "Interpret find_string as a basic regular expression" },
@@ -274,6 +277,9 @@ void usage()
 	printf("\nOptions:\n");
 	for (int t=0;arguments[t].state;t++)
 	{
+		// don't print 'hidden' options
+		if (!arguments[t].description)
+			continue;
 		if (arguments[t].option>' ')
 			printf(" -%c,", arguments[t].option );
 		else
@@ -456,18 +462,18 @@ const char* pre_fart( const char* test )
 ///////////////////////////////////////////////////////////////////////////////
 // Find and replace text in one line. Returns NULL if nothing has changed
 
-const char* fart_line( const char *_line, char *farted )
+int fart_line( const char *_line, char *farted )
 {
 	const char *compare_buf = get_compare_buf(_line);
 
 	farted[0]='\0';
 
-	bool replaced = false;
-	char *output = farted;
-	size_t cur = 0, offset;
-	const char *t;
+	int count = 0;
+	char *output = farted;			// output pointer
+	size_t offset, cur = 0;
+
 	// Find the string in this line (FindString is lower case if _IgnoreCase)
-	for (;(t = strstr( compare_buf+cur, FindString ));cur=offset+FindLength)
+	for (const char *t;(t = strstr( compare_buf+cur, FindString ));cur=offset+FindLength)
 	{
 		offset = t - compare_buf;
 		if (_WholeWord)
@@ -483,7 +489,7 @@ const char* fart_line( const char *_line, char *farted )
 			continue;
 
 		// string was found at t
-		replaced = true;
+		count++;
 		// copy characters up-to t
 		while (cur<offset)
 			*output++ = _line[cur++];
@@ -493,11 +499,10 @@ const char* fart_line( const char *_line, char *farted )
 		*output = '\0';
 		// continue right after find string
 	}
-	if (!replaced)
-		return NULL;
-	// append the last part
-	strcpy(output,_line+cur);
-	return farted;
+	if (count)
+		// append the last part
+		strcpy(output,_line+cur);
+	return count;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -995,9 +1000,6 @@ void parse_options( int argc, char* argv[] )
 		if (do_options && argv[t][0]=='/')
 		{
 			options_short(argv[t]+1);
-			// HACK: allow /s for --recursive on DOS
-			if (strchr(argv[t],'s'))
-				_SubDir = true;
 			continue;
 		}
 #endif
@@ -1091,23 +1093,25 @@ int fart_file_path( const char* dir, const char* file )
 
 	if (_Names)
 	{
-		const char *buf = fart_line(file,fart_buf);
-		if (buf)
+		int count = fart_line(file,fart_buf);
+		if (count)
 		{
+			// fart_buf contains the new filename
 			TotalFileCount++;
 
-			char *newpath = strdup2(dir,buf);
+			char *newpath = strdup2(dir,fart_buf);
+			// What about renaming files 'in' CVS?
 			if (_Preview || rename( _path, newpath )==0)
 			{
 				// Filename was changed (only increment count if actually done)
 				if (!_Preview)
-					TotalFindCount++;
-				printf( __filename_rename, _path, buf);
+					TotalFindCount += count;
+				printf( __filename_rename, _path, fart_buf);
 			}
 			else
 			{
-				ERRPRINTF2("Error: could not rename %s to %s\n", _path, buf );
-				// CVS?
+				ERRPRINTF2("Error: could not rename %s to %s\n", _path, fart_buf );
+				// read-only: CVS?
 			}
 			free(newpath);
 		}
