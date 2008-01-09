@@ -49,7 +49,7 @@
 
 ///////////////////////////////////////////////////////////////////////////////
 
-#define VERSION				"v1.98b"
+#define VERSION				"v1.98c"
 
 #define _WILDCARD_SEPARATOR	','
 #define WILDCARD_ALL		"*"
@@ -146,7 +146,7 @@ struct argument_t
 int		TotalFileCount;					// Number of files
 int		TotalFindCount;					// Number of total occurences
 
-#define MAXSTRING 1024
+#define MAXSTRING 8192
 
 bool	HasWildCard = false;
 char	WildCard[MAXSTRING];
@@ -605,7 +605,7 @@ int _fart( FILE *f1, FILE *f2, const char* in )
 		const char* bp = b;
 		while (1)
 		{
-			char *t = strstr(bp,FindString);
+			const char *t = strstr(bp,FindString);
 
 			// Check for word boundary
 			if (t && _WholeWord)
