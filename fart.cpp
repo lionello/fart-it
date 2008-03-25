@@ -49,7 +49,7 @@
 
 ///////////////////////////////////////////////////////////////////////////////
 
-#define VERSION				"v1.98c"
+#define VERSION				"v1.99a"
 
 #define _WILDCARD_SEPARATOR	','
 #define WILDCARD_ALL		"*"
@@ -100,12 +100,14 @@ bool	_SubDir = false;
 bool	_AdaptCase = false;
 bool	_WholeWord = false;
 bool	_CVS = false;
+bool	_SVN = false;
 bool	_Verbose = false;
 bool	_Invert = false;
 bool	_Count = false; 
 bool	_Names = false; 
 bool	_Binary = false;
 bool	_CStyle = false;
+bool	_Remove = false;
 
 struct argument_t
 {
@@ -134,8 +136,10 @@ struct argument_t
 	{ &_Names, 'f', "filename", "Find (and replace) filename instead of contents" },
 	{ &_Binary, 'B', "binary", "Also search (and replace) in binary files (CAUTION)" },
 	{ &_CStyle, 'C', "c-style", "Allow C-style extended characters (\\xFF\\0\\t\\n\\r\\\\ etc.)" },
-	{ &_CVS, ' ', "cvs", "Skip cvs dirs; execute \"cvs edit\" before changing files" },
 	// fart specific options
+	{ &_CVS, ' ', "cvs", "Skip cvs dirs; execute \"cvs edit\" before changing files" },
+	{ &_SVN, ' ', "svn", "Skip svn dirs" },
+	{ &_Remove, 'R', "remove", "Remove all occurences of the find_string" },
 //	{ &_VSS, ' ', 'vss", "Do SourceSafe check-out before changing r/o files" },
 	{ &_AdaptCase, 'a', "adapt", "Adapt the case of replace_string to found string" },
 	{ &_Backup, 'b', "backup", "Make a backup of each changed file" },
@@ -847,6 +851,13 @@ int for_all_files_recursive( const char *dir, const char* wc, file_func_t _ff )
 				ERRPRINTF2( "FART: skipping cvs dir %s%s\n",dir, spul[t] );
 			continue;
 		}
+		// Don't recurse into svn directories
+		if (_SVN && strcmp(spul[t],".svn")==0)
+		{
+			if (_Verbose)
+				ERRPRINTF2( "FART: skipping svn dir %s%s\n",dir, spul[t] );
+			continue;
+		}
 
 		char *_path = strdup3(dir,spul[t],DIR_SEPARATOR);
 		count += for_all_files_recursive(_path,wc,_ff);
@@ -1160,7 +1171,7 @@ int main( int argc, char* argv[] )
 
 	TotalFileCount = TotalFindCount = 0;
 
-	// Warn for conflicting options
+	// Warn for non-critical conflicting options
 	if (_Count && _Numbers)
 		ERRPRINTF( "Warning: conflicting options: --line-number, --count\n" );
 
@@ -1182,17 +1193,31 @@ int main( int argc, char* argv[] )
 	if (_IgnoreCase && FindLength)
 		strlwr(FindString);									// FIXME: memlwr
 
+	bool grepMode = (ReplaceLength==0);						// grep or fart?
+
 	// OPTIMIZE: Check for redundant FART (where find_string==replace_string)
 	if (ReplaceLength && FindLength==ReplaceLength)
 	{
 		if (!_IgnoreCase && memcmp(FindString,ReplaceString,FindLength)==0)
 		{
 			ERRPRINTF( "Warning: strings are identical.\n");
-			ReplaceLength = 0;								// 'grep' mode
+			grepMode = true;								// 'grep' mode
 		}
 	}
 
-	if (!ReplaceLength)
+	if (_Remove)
+	{
+		if (ReplaceLength)
+		{
+			ERRPRINTF( "Error: option --remove conflicts with replace_string\n" );
+			return -4;
+		}
+		// ReplaceString was not initialized by parse_options; do it here
+		ReplaceString[0] = 0;
+		grepMode = false;									// fart mode
+	}
+
+	if (grepMode)
 	{
 		// GREP-mode
 		if (strcmp( WildCard, "-" )==0)
@@ -1258,7 +1283,7 @@ int main( int argc, char* argv[] )
 		return count;
 	}
 
-	if (_CVS && _Names)
+	if ((_CVS || _SVN) && _Names)
 	{
 		ERRPRINTF("Error: renaming version controlled files would destroy their history\n");
 		return -3;
