@@ -49,7 +49,7 @@
 
 ///////////////////////////////////////////////////////////////////////////////
 
-#define VERSION				"v1.99a"
+#define VERSION				"v1.99b"
 
 #define _WILDCARD_SEPARATOR	','
 #define WILDCARD_ALL		"*"
@@ -139,7 +139,7 @@ struct argument_t
 	// fart specific options
 	{ &_CVS, ' ', "cvs", "Skip cvs dirs; execute \"cvs edit\" before changing files" },
 	{ &_SVN, ' ', "svn", "Skip svn dirs" },
-	{ &_Remove, 'R', "remove", "Remove all occurences of the find_string" },
+	{ &_Remove, ' ', "remove", "Remove all occurences of the find_string" },
 //	{ &_VSS, ' ', 'vss", "Do SourceSafe check-out before changing r/o files" },
 	{ &_AdaptCase, 'a', "adapt", "Adapt the case of replace_string to found string" },
 	{ &_Backup, 'b', "backup", "Make a backup of each changed file" },
