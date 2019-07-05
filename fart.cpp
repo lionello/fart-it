@@ -1,5 +1,5 @@
-// 1998-2002 Lionello Lunesu.
-//  
+// 1998-2019 Lionello Lunesu.
+//
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation; either version 2 of the License, or
@@ -49,7 +49,7 @@
 
 ///////////////////////////////////////////////////////////////////////////////
 
-#define VERSION				"v1.99b"
+#define VERSION				"v1.99c"
 
 #define _WILDCARD_SEPARATOR	','
 #define WILDCARD_ALL		"*"
@@ -81,13 +81,13 @@
 
 
 // Output strings (eventually customizable)
-static char __temp_file[16] = "_fart.~";
-static char __backup_suffix[16] = ".bak";			// fart.cpp.bak
-static char __linenumber[16] = "[%4i]";				// [   2]
-static char __filename[16] = "%s\n";				// fart.cpp
-static char __filename_count[16] = "%s [%i]\n";		// fart.cpp [2]
-static char __filename_text[16] = "%s :\n";			// fart.cpp :
-static char __filename_rename[16] = "%s => %s\n";	// fart.CPP => fart.cpp
+static const char __temp_file[16] = "_fart.~";
+static const char __backup_suffix[16] = ".bak";			// fart.cpp.bak
+static const char __linenumber[16] = "[%4i]";				// [   2]
+static const char __filename[16] = "%s\n";				// fart.cpp
+static const char __filename_count[16] = "%s [%i]\n";		// fart.cpp [2]
+static const char __filename_text[16] = "%s :\n";			// fart.cpp :
+static const char __filename_rename[16] = "%s => %s\n";	// fart.CPP => fart.cpp
 
 // Option flags
 bool	_Numbers = false;
@@ -101,20 +101,21 @@ bool	_AdaptCase = false;
 bool	_WholeWord = false;
 bool	_CVS = false;
 bool	_SVN = false;
+bool	_GIT = true;
 bool	_Verbose = false;
 bool	_Invert = false;
-bool	_Count = false; 
-bool	_Names = false; 
+bool	_Count = false;
+bool	_Names = false;
 bool	_Binary = false;
 bool	_CStyle = false;
 bool	_Remove = false;
 
 struct argument_t
 {
-	bool*	state;
-	char	option;
-	char*	option_long;
-	char*	description;
+	bool*		state;
+	char		option;
+	const char*	option_long;
+	const char*	description;
 } arguments[] = {
 	// general options
 	{ &_Help, 'h', "help", "Show this help message (ignores other options)" },
@@ -139,6 +140,7 @@ struct argument_t
 	// fart specific options
 	{ &_CVS, ' ', "cvs", "Skip cvs dirs; execute \"cvs edit\" before changing files" },
 	{ &_SVN, ' ', "svn", "Skip svn dirs" },
+	{ &_GIT, ' ', "git", "Skip git dirs (default)" },
 	{ &_Remove, ' ', "remove", "Remove all occurences of the find_string" },
 //	{ &_VSS, ' ', 'vss", "Do SourceSafe check-out before changing r/o files" },
 	{ &_AdaptCase, 'a', "adapt", "Adapt the case of replace_string to found string" },
@@ -233,7 +235,7 @@ int cstyle( char *buffer )
 				}
 				// seep through
 			}
-			default:  
+			default:
 				ERRPRINTF1( "Warning: unrecognized character escape sequence: \\%c\n", *cur );
 			case '\\':
 			case '\?':
@@ -277,7 +279,7 @@ void usage()
 	// Print banner
 	printf( "\nFind And Replace Text  %-30s by Lionello Lunesu\n\n",VERSION);
 
-	printf("Usage: FART [options] [--] <wildcard>[%c...] [find_string] [replace_string]\n", _WILDCARD_SEPARATOR );
+	printf("Usage: fart [options] [--] <wildcard>[%c...] [find_string] [replace_string]\n", _WILDCARD_SEPARATOR );
 	printf("\nOptions:\n");
 	for (int t=0;arguments[t].state;t++)
 	{
@@ -401,7 +403,7 @@ int _findtext( FILE* f, const char *filename )
 		}
 
 		this_find_count += t;
-			
+
 		if (first)
 		{
 			// This is the first occurence in this file
@@ -661,7 +663,7 @@ int _fart( FILE *f1, FILE *f2, const char* in )
 			// Don't replace find_string if DoKeepLine is NOT set
 /*			if (!DoKeepLine)
 			{
-				if (!t) 
+				if (!t)
 				{
 					// Skip this line (doesn't contain find_string)
 					replace = true;
@@ -859,6 +861,14 @@ int for_all_files_recursive( const char *dir, const char* wc, file_func_t _ff )
 			continue;
 		}
 
+		// Don't recurse into git directories
+		if (_GIT && strcmp(spul[t],".git")==0)
+		{
+			if (_Verbose)
+				ERRPRINTF2( "FART: skipping git dir %s%s\n",dir, spul[t] );
+			continue;
+		}
+
 		char *_path = strdup3(dir,spul[t],DIR_SEPARATOR);
 		count += for_all_files_recursive(_path,wc,_ff);
 		free(_path);
@@ -973,7 +983,7 @@ void options_short( const char *options )
 		// Did we process the option?
 		if (!arguments[tt].state)
 		{
-			if (options[0]!='?')				// don't show error for '?' 
+			if (options[0]!='?')				// don't show error for '?'
 				ERRPRINTF1( "Error: invalid option -%c\n", options[0] );
 			_Help = true;
 		}
@@ -1288,7 +1298,7 @@ int main( int argc, char* argv[] )
 		ERRPRINTF("Error: renaming version controlled files would destroy their history\n");
 		return -3;
 	}
-	
+
 	if (_Binary && !_Preview)
 	{
 		// If the size changes, binary files will very likely stop working
