@@ -19,7 +19,7 @@
 
 
 #ifdef USE_WILDMAT
-/*extern "C"*/ 
+/*extern "C"*/
 int wildmat (const char *text, const char *p);
 #endif
 
@@ -78,7 +78,7 @@ char* memupr( char *ptr, size_t size )
 
 /*****************************************************************************/
 
-char* memmem( const char* m1, size_t len1, const char *m2, size_t len2 )
+char* _memmem( const char* m1, size_t len1, const char *m2, size_t len2 )
 {
 	size_t c,t;
 	if (len1<len2)
@@ -215,7 +215,7 @@ char** find_files( const char* dir, const char *wc, int dirs_or_files )
 	spul = NULL;
 	numitems = 0;
 
-	do 
+	do
 	{
 		/* Do files now; process folders later */
 #ifdef DT_DIR
@@ -292,7 +292,7 @@ string* alloc_string( string *here, const char *s )
 		ns->next = here->next;
 		here->next = ns;
 	}
-	else 
+	else
 		ns->next = NULL;
 	return ns;
 }
