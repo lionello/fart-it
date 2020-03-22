@@ -1,2 +1,3 @@
 #!/usr/bin/env sh
-gcc fart.cpp fart_shared.c wildmat.c -o fart "$@"
+if [ "$CC" == "" ]; then CC=gcc ; fi
+$CC fart.cpp fart_shared.c wildmat.c -o fart "$@"
