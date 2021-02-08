@@ -1,2 +1,5 @@
 fart
-/result
+
+/.vscode
+/.xmake
+/build
