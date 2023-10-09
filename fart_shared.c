@@ -137,7 +137,7 @@ char** find_files( const char* dir, const char *wc, int dirs_or_files )
 	/* When using the wildmat routine, we compare in lowercase */
 	char *wclwr, *namelwr;
 	int matched;
-#endif;
+#endif
 
 	/* Make full path wildcard */
 #ifdef USE_WILDMAT
