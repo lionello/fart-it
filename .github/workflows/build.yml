@@ -1,0 +1,38 @@
+name: Build
+
+on:
+  push:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu, windows, macos]
+    runs-on: ${{ matrix.os }}-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Build (GCC)
+      if: matrix.os != 'windows'
+      run: ./mk
+    - uses: ilammy/msvc-dev-cmd@v1
+    - name: Build (Windows)
+      if: matrix.os == 'windows'
+      shell: cmd
+      run: mk.bat
+    - uses: actions/upload-artifact@v3
+      with:
+        name: binary-${{ matrix.os }}
+        retention-days: 1
+        path: |
+          fart
+          fart.exe
+    - name: Release
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: |
+          fart
+          fart.exe
+        fail_on_unmatched_files: false
+        generate_release_notes: true
+        append_body: true
