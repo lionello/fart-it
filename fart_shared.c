@@ -129,7 +129,7 @@ char* strdup3( const char* s1, const char* s2, const char* s3 )
 char** find_files( const char* dir, const char *wc, int dirs_or_files )
 {
 	char *_path;
-	long fh;
+	intptr_t fh;
 	struct _finddata_t fd;
 	char **spul;
 	int numitems;
