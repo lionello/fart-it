@@ -15,24 +15,24 @@ jobs:
       if: matrix.os != 'windows'
       run: ./mk
     - uses: ilammy/msvc-dev-cmd@v1
+      if: matrix.os == 'windows'
     - name: Build (Windows)
       if: matrix.os == 'windows'
       shell: cmd
       run: mk.bat
+    - name: Zip (Linux, macOS)
+      if: matrix.os != 'windows'
+      run: zip fart-${{ matrix.os }}.zip fart
+    - name: Zip (Windows)
+      if: matrix.os == 'windows'
+      run: Compress-Archive -Path fart.exe -Destination fart-${{ matrix.os }}.zip
     - uses: actions/upload-artifact@v3
       with:
-        name: binary-${{ matrix.os }}
-        retention-days: 1
-        path: |
-          fart
-          fart.exe
+        path: fart-*.zip
     - name: Release
       uses: softprops/action-gh-release@v1
       if: startsWith(github.ref, 'refs/tags/')
       with:
-        files: |
-          fart
-          fart.exe
-        fail_on_unmatched_files: false
+        files: fart-${{ matrix.os }}.zip
         generate_release_notes: true
         append_body: true
